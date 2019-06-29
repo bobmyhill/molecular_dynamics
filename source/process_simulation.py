@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay
-
+import os
 
 
 class Configuration(object):
@@ -72,9 +72,14 @@ class Configuration(object):
                     length = np.linalg.norm(self.xyz[p] - self.xyz[p1])
                     if length > cutoff:
                         self.connectivity[p].remove(p1)
-                        
 
-        
+        self.next_nearest = []
+        for p in range(len(self.xyz)):
+            self.next_nearest.append(set({}))
+            for neighbour in list(self.connectivity[p]):
+                self.next_nearest[-1].update(self.connectivity[neighbour])
+
+
 class Simulation(object):
     def __init__(self, filename):
         with open(filename, 'r') as f:
@@ -136,17 +141,53 @@ class Simulation(object):
 
 filename = 'data/MgSiO3_3000K_1bar.dat'
 #filename = 'data/MgSiO3_5000K_1bar.dat'
-#filename = 'data/Mg2SiO4_2500K_1bar.dat'
+filename = 'data/Mg2SiO4_2500K_1bar.dat'
 
 sim = Simulation(filename=filename)
 
 
 coordination = {'Mg': [], 'Si': [], 'O': []}
-
-for i_conf in range(14900, 15000):
+next_nearest_neighbours = []
+elements = []
+for i_conf in range(14000, 15000):
     sim.configurations[i_conf].process(cutoff_scaling={'Mg': 1., 'Si': 1., 'O': 1.})
     for i in range(0,96):
         coordination[sim.element_list[i%sim.total_atoms]].append(len(sim.configurations[i_conf].connectivity[i]))
+
+        next_nearest_atoms = sim.configurations[i_conf].next_nearest[i]
+        elements.append(sim.element_list[i%sim.total_atoms])
+        next_nearest_neighbours.append({'Mg': 0., 'Si': 0., 'O': 0.})
+        for n in next_nearest_atoms:
+            next_nearest_neighbours[-1][sim.element_list[n%sim.total_atoms]] += 1.
+
+
+Mg_Mg = [[] for i in range(40)]
+Si_Mg = [[] for i in range(40)]
+for i in range(len(elements)):
+    n = next_nearest_neighbours[i]
+    if elements[i] == 'Mg':
+        Mg_Mg[int(n['Mg'] + n['Si'] + n['O'])].append(n['Mg']/(n['Mg'] + n['Si'] + n['O']))
+    if elements[i] == 'Si':
+        Si_Mg[int(n['Mg'] + n['Si'] + n['O'])].append(n['Mg']/(n['Mg'] + n['Si'] + n['O']))
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+plt.plot(range(40), [np.average(map(float, fs)) for fs in Mg_Mg], label='Mg-Mg')
+plt.plot(range(40), [np.average(map(float, fs)) for fs in Si_Mg], label='Si-Mg')
+
+ax.set_xlim(0,)
+ax.set_ylim(0,1)
+
+ax.set_xlabel('Coordination number A+B around atom A')
+ax.set_ylabel('Fraction atom B around atom A')
+
+base = os.path.basename(filename)
+basename = os.path.splitext(base)[0]
+plt.legend()
+
+fig.savefig(basename+'_coordination_fractions.pdf')
+plt.show()
+
 
 
 bins = np.linspace(0.5, 12.5, 13)
